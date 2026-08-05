@@ -7,6 +7,7 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.text.Text;
 import net.minecraft.text.TranslatableTextContent;
+import org.genius8loci.portholeomnis.PortholeButton;
 import org.genius8loci.portholeomnis.PortholeConnectScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -39,11 +40,9 @@ public abstract class MultiplayerScreenMixin extends Screen {
     @Inject(method = "init", at = @At("TAIL"))
     private void portholeomnis$addPortholeButton(CallbackInfo ci) {
         MultiplayerScreen self = (MultiplayerScreen) (Object) this;
-        ButtonWidget porthole = ButtonWidget
-                .builder(Text.translatable("portholeomnis.connect.button"),
-                        b -> this.client.setScreen(new PortholeConnectScreen(self)))
-                .dimensions(6, 6, 74, 20)
-                .build();
+        ButtonWidget porthole = new PortholeButton(6, 6, 74, 20,
+                Text.translatable("portholeomnis.connect.button"),
+                b -> this.client.setScreen(new PortholeConnectScreen(self)));
         this.addDrawableChild(porthole);
         portholeomnis$layoutRow(porthole);
     }
