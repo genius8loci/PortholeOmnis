@@ -1,9 +1,12 @@
 name: release
 
-# Тег вида v1.0.0 собирает мод и вешает jar на релиз GitHub.
+# Тег версии собирает мод и вешает jar на релиз GitHub.
+# Принимаются оба стиля: v1.0.0 и 1.0.0.
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v[0-9]*'
+      - '[0-9]*'
 
 permissions:
   contents: write
