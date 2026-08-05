@@ -6,6 +6,8 @@ import net.minecraft.client.gui.screen.ConnectScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
+import net.minecraft.client.gui.widget.CyclingButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
@@ -14,20 +16,28 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.Objects;
+
 /** Экран гостя: ввод share-кода, запуск туннеля и переход в игру. */
 public class PortholeConnectScreen extends Screen {
 
     private final Screen parent;
 
+    /** Как часто перепроверяем окружение: тиков в секунде ровно двадцать. */
+    private static final int RECHECK_TICKS = 20;
+
     private TextFieldWidget codeField;
     private ButtonWidget connectButton;
+    private ClickableWidget relayButton;
+    private ButtonWidget storeButton;
     private Text status = Text.empty();
 
     /** Переживает init(): при изменении размера окна виджеты создаются заново. */
     private String code = "";
 
-    /** Ключ причины, по которой подключаться нельзя в принципе (нет Porthole, нет Steam). */
-    private String blockedKey;
+    /** Короткий идентификатор причины, по которой подключаться нельзя (нет Porthole, нет Steam). */
+    private String blockedId;
+    private int ticks;
     private boolean busy;
     /** Управление передано ConnectScreen — процесс закрывать нельзя. */
     private boolean handedOff;
@@ -47,12 +57,21 @@ public class PortholeConnectScreen extends Screen {
         this.codeField.setText(this.code);
         this.codeField.setChangedListener(s -> {
             this.code = s;
-            updateButton();
+            updateWidgets();
         });
         // Окно могли растянуть уже после нажатия «Подключиться».
         this.codeField.setEditable(!this.busy);
         this.addDrawableChild(this.codeField);
         this.setInitialFocus(this.codeField);
+
+        // Свой тумблер, а не хостовой PortholeOmnis.forceRelay: экран «Открыть для сети»
+        // гость не открывает и до того флага дотянуться не может.
+        this.relayButton = this.addDrawableChild(CyclingButtonWidget
+                .onOffBuilder(PortholeOmnis.guestForceRelay)
+                .tooltip(value -> Tooltip.of(Text.translatable("portholeomnis.force_relay.tooltip")))
+                .build(cx - 100, 114, 200, 20,
+                        Text.translatable("portholeomnis.force_relay"),
+                        (button, value) -> PortholeOmnis.guestForceRelay = value));
 
         this.connectButton = this.addDrawableChild(ButtonWidget
                 .builder(Text.translatable("portholeomnis.connect.join"), b -> onConnect())
@@ -63,48 +82,90 @@ public class PortholeConnectScreen extends Screen {
                 .dimensions(cx + 2, 140, 98, 20)
                 .build());
 
+        // Кнопка магазина живёт всегда и только прячется: так её показ и скрытие
+        // обходятся без пересборки экрана из tick().
+        // Здесь, в отличие от чата, ограничения на схему нет — открываем сам Steam.
+        this.storeButton = this.addDrawableChild(ButtonWidget
+                .builder(Text.translatable("portholeomnis.porthole.store"),
+                        b -> SteamClient.openStorePage())
+                .dimensions(cx - 100, 190, 200, 20)
+                .tooltip(Tooltip.of(Text.literal(PortholeOmnis.STORE_STEAM_URI)))
+                .build());
+
         // Проверки окружения до того, как пользователь начал что-то набирать.
-        if (PortholeLocator.locate() == null) {
-            block("portholeomnis.porthole.not_found");
-            // Здесь, в отличие от чата, ограничения на схему нет — открываем сам Steam.
-            this.addDrawableChild(ButtonWidget
-                    .builder(Text.translatable("portholeomnis.porthole.store"),
-                            b -> SteamClient.openStorePage())
-                    .dimensions(cx - 100, 190, 200, 20)
-                    .tooltip(Tooltip.of(Text.literal(PortholeOmnis.STORE_STEAM_URI)))
-                    .build());
-        } else if (!SteamClient.isRunning()) {
-            block("portholeomnis.porthole.steam_not_running");
+        // При busy сюда попадают только из-за смены размера окна — идёт попытка,
+        // и её статус затирать нечем.
+        if (!this.busy) {
+            this.blockedId = detectBlock();
+            if (this.blockedId != null) {
+                this.status = Text.translatable(PortholeOmnis.key(this.blockedId))
+                        .formatted(Formatting.RED);
+            }
         }
-        updateButton();
+        updateWidgets();
     }
 
-    private void block(String key) {
-        this.blockedKey = key;
-        this.status = Text.translatable(key).formatted(Formatting.RED);
+    /** @return идентификатор причины, по которой подключаться нельзя, либо null. */
+    private String detectBlock() {
+        String unavailable = PortholeLocator.unavailableId();
+        if (unavailable != null) {
+            return unavailable;
+        }
+        return SteamClient.isRunning() ? null : "porthole.steam_not_running";
     }
 
-    private void updateButton() {
-        if (this.connectButton == null) {
+    /**
+     * Porthole могли поставить, а Steam запустить, не закрывая этот экран. Раз в секунду
+     * переспрашиваем, чтобы человеку не приходилось выходить и заходить заново.
+     */
+    @Override
+    public void tick() {
+        super.tick();
+        // Во время попытки окружение уже не важно, а вот затереть её статус — легко.
+        if (this.busy || this.handedOff || ++this.ticks < RECHECK_TICKS) {
+            return;
+        }
+        this.ticks = 0;
+
+        String now = detectBlock();
+        if (Objects.equals(this.blockedId, now)) {
+            return;
+        }
+        boolean wasBlocked = this.blockedId != null;
+        this.blockedId = now;
+        if (now != null) {
+            this.status = Text.translatable(PortholeOmnis.key(now)).formatted(Formatting.RED);
+        } else if (wasBlocked) {
+            // Гасим именно сообщение о блокировке; сообщение об отказе связи не наше.
+            this.status = Text.empty();
+        }
+        updateWidgets();
+    }
+
+    private void updateWidgets() {
+        // storeButton создаётся последним: пока он null, виджетов ещё нет.
+        if (this.storeButton == null) {
             return;
         }
         this.connectButton.active = !this.busy
-                && this.blockedKey == null
+                && this.blockedId == null
                 && !this.codeField.getText().trim().isEmpty();
+        this.relayButton.active = !this.busy;
+        this.storeButton.visible = "porthole.not_found".equals(this.blockedId);
     }
 
     private void onConnect() {
         String code = this.codeField.getText().trim();
-        if (code.isEmpty() || this.busy || this.blockedKey != null) {
+        if (code.isEmpty() || this.busy || this.blockedId != null) {
             return;
         }
         this.busy = true;
         this.codeField.setEditable(false);
         this.status = Text.translatable("portholeomnis.connect.status.starting")
                 .formatted(Formatting.GRAY);
-        updateButton();
+        updateWidgets();
 
-        PortholeConnector.connect(code, PortholeOmnis.forceRelay,
+        PortholeConnector.connect(code, PortholeOmnis.guestForceRelay,
                 key -> onClient(() -> this.status =
                         Text.translatable(key).formatted(Formatting.GRAY)),
                 port -> onClient(() -> join(port)),
@@ -139,7 +200,9 @@ public class PortholeConnectScreen extends Screen {
         this.busy = false;
         this.codeField.setEditable(true);
         this.status = Text.translatable(key).formatted(Formatting.RED);
-        updateButton();
+        // Причина отказа могла быть в самом окружении — пусть tick() переспросит сразу.
+        this.ticks = RECHECK_TICKS;
+        updateWidgets();
     }
 
     @Override

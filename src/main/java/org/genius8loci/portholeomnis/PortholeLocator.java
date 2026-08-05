@@ -14,8 +14,10 @@ import java.util.regex.Pattern;
 public final class PortholeLocator {
 
     private static final String INSTALL_DIR = "porthole";
-    private static final boolean WINDOWS =
-            System.getProperty("os.name", "").toLowerCase().contains("win");
+    private static final String OS = System.getProperty("os.name", "").toLowerCase();
+    private static final boolean WINDOWS = OS.contains("win");
+    /** Porthole в Steam выходит только под Windows и Linux/SteamOS. */
+    private static final boolean SUPPORTED_OS = !OS.contains("mac");
     private static final String EXE = WINDOWS ? "porthole.exe" : "porthole";
 
     /** "path"  "D:\\SteamLibrary" — путь в vdf экранирован по правилам C. */
@@ -27,6 +29,20 @@ public final class PortholeLocator {
     /** Имя процесса Porthole — по нему опознаются осиротевшие процессы. */
     public static String binaryName() {
         return EXE;
+    }
+
+    /**
+     * Причина, по которой Porthole использовать нельзя, как короткий идентификатор
+     * (см. {@link PortholeOmnis#key(String)}), либо null, если всё на месте.
+     *
+     * <p>macOS вынесен в отдельную ветку намеренно: сборки под неё не существует, и
+     * «Porthole не найден» отправило бы человека искать в Steam то, чего там нет.
+     */
+    public static String unavailableId() {
+        if (!SUPPORTED_OS) {
+            return "porthole.unsupported_os";
+        }
+        return locate() == null ? "porthole.not_found" : null;
     }
 
     /** @return путь к бинарнику или null, если не найден. */
@@ -51,7 +67,7 @@ public final class PortholeLocator {
     }
 
     /** Корень Steam плюс все дополнительные библиотеки из libraryfolders.vdf. */
-    private static List<Path> libraryFolders(Path steamRoot) {
+    static List<Path> libraryFolders(Path steamRoot) {
         List<Path> libs = new ArrayList<>();
         libs.add(steamRoot);
         Path vdf = steamRoot.resolve("steamapps").resolve("libraryfolders.vdf");

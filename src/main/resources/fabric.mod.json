@@ -4,7 +4,7 @@
   "version": "${version}",
   "name": "PortholeOmnis",
   "description": "Open your world to the internet through Porthole: one click on the host, one share code on the guest.",
-  "authors": ["genius8loci"],
+  "authors": ["genius8loci", "valkdz"],
   "contact": {
     "homepage": "https://github.com/genius8loci/PortholeOmnis",
     "sources": "https://github.com/genius8loci/PortholeOmnis",

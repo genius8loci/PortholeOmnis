@@ -17,6 +17,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Имя jar берётся из mod_version, а не из тега. Без этой сверки тег v1.0.2
+      # без правки gradle.properties выложил бы на релиз 1.0.2 файл 1.0.1.
+      - name: Тег должен совпадать с mod_version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(sed -n 's/^mod_version=[[:space:]]*//p' gradle.properties | tr -d '[:space:]')"
+          if [ -z "$version" ]; then
+            echo "::error::mod_version не найден в gradle.properties"
+            exit 1
+          fi
+          if [ "$tag" != "$version" ]; then
+            echo "::error::тег $GITHUB_REF_NAME не совпадает с mod_version=$version в gradle.properties"
+            exit 1
+          fi
+          echo "версия $version"
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

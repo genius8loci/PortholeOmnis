@@ -6,6 +6,9 @@ build/
 run/
 remappedSrc/
 
+# Тесты грузят PortholeOmnis, а с ним и log4j Minecraft — тот заводит logs/
+logs/
+
 # IDE
 .idea/
 *.iml

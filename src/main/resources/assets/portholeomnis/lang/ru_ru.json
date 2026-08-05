@@ -1,8 +1,24 @@
 {
   "portholeomnis.online_mode": "Онлайн-режим",
+  "portholeomnis.online_mode.tooltip.on": "Проверять лицензию гостей у Mojang. Войти смогут только владельцы игры под своими аккаунтами.",
+  "portholeomnis.online_mode.tooltip.off": "Лицензия не проверяется. Ваш мир открыт в интернет, и зайти сможет кто угодно под любым ником — включая тех, кому вы код не давали.",
   "portholeomnis.use_porthole": "Porthole",
+  "portholeomnis.use_porthole.tooltip.on": "Поднять туннель и выдать в чат код лобби — друзья зайдут через интернет.",
+  "portholeomnis.use_porthole.tooltip.off": "Обычный LAN: мир виден только в вашей локальной сети, туннель не запускается.",
   "portholeomnis.force_relay": "Релей",
   "portholeomnis.force_relay.tooltip": "Пускать трафик через релеи Valve. Скрывает ваш IP от гостей ценой небольшой задержки.",
+  "portholeomnis.lobby.title": "Лобби Porthole",
+  "portholeomnis.lobby.copy": "Скопировать код",
+  "portholeomnis.lobby.copied": "Код скопирован!",
+  "portholeomnis.lobby.open": "Лобби Porthole",
+  "portholeomnis.lobby.more": "Ещё %s…",
+  "portholeomnis.lobby.mode.relay": "Передача: через релей Valve",
+  "portholeomnis.lobby.mode.direct": "Передача: напрямую",
+  "portholeomnis.lobby.peers": "Подключено: %s",
+  "portholeomnis.lobby.nobody": "Пока никого",
+  "portholeomnis.toast.joined": "Подключается к лобби",
+  "portholeomnis.toast.left": "Вышел из лобби",
+
   "portholeomnis.chat.code": "Код лобби Porthole: %s",
   "portholeomnis.chat.copy": "Нажмите, чтобы скопировать",
 
@@ -18,6 +34,7 @@
   "portholeomnis.connect.timeout": "Туннель не поднялся вовремя. Хост ещё в сети?",
 
   "portholeomnis.porthole.not_found": "Porthole не найден. Установите его в Steam.",
+  "portholeomnis.porthole.unsupported_os": "Porthole не выпускается под macOS: в Steam есть сборки только под Windows и Linux/SteamOS.",
   "portholeomnis.porthole.store": "Открыть Porthole в Steam",
   "portholeomnis.porthole.steam_not_running": "Steam не запущен. Porthole требует запущенного клиента Steam с выполненным входом.",
   "portholeomnis.porthole.launch_failed": "Не удалось запустить Porthole.",

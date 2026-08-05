@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
@@ -33,10 +34,19 @@ public final class PortholeConnector {
     /** Сколько ждём, пока порт начнёт принимать соединения. */
     private static final long READY_TIMEOUT_SECONDS = 30;
     private static final long PROBE_INTERVAL_MILLIS = 500;
+    /** Сколько даём процессу на штатное завершение, прежде чем добить. */
+    private static final long DESTROY_GRACE_SECONDS = 3;
+    /** Поколение, которого не бывает: {@link #generation} растёт с единицы. */
+    private static final int NO_ATTEMPT = 0;
 
     private static Process process;
     private static Thread shutdownHook;
-    private static volatile String errorKey;
+    /**
+     * Номер текущей попытки подключения. Воркер помнит своё поколение и, увидев чужое,
+     * молча уходит: иначе воркер отменённой попытки по своему дедлайну свернул бы
+     * туннель следующей.
+     */
+    private static int generation;
 
     private PortholeConnector() {
     }
@@ -65,13 +75,18 @@ public final class PortholeConnector {
                             Consumer<String> status,
                             IntConsumer onReady,
                             Consumer<String> onFail) {
+        String unavailable = PortholeLocator.unavailableId();
+        if (unavailable != null) {
+            onFail.accept(PortholeOmnis.key(unavailable));
+            return;
+        }
         Path exe = PortholeLocator.locate();
         if (exe == null) {
-            onFail.accept("portholeomnis.porthole.not_found");
+            onFail.accept(PortholeOmnis.key("porthole.not_found"));
             return;
         }
         if (!SteamClient.isRunning()) {
-            onFail.accept("portholeomnis.porthole.steam_not_running");
+            onFail.accept(PortholeOmnis.key("porthole.steam_not_running"));
             return;
         }
 
@@ -85,12 +100,16 @@ public final class PortholeConnector {
         }
 
         status.accept("portholeomnis.connect.status.starting");
-        if (!start(exe, code, forceRelay, port, onFail)) {
+        // Ошибку из stdout своего процесса воркер читает через свою же ссылку —
+        // общее статическое поле досталось бы и следующей попытке.
+        AtomicReference<String> error = new AtomicReference<>();
+        int gen = start(exe, code, forceRelay, port, error, onFail);
+        if (gen == NO_ATTEMPT) {
             return;
         }
 
         status.accept("portholeomnis.connect.status.waiting");
-        awaitReady(port, onReady, onFail);
+        awaitReady(gen, port, error, onReady, onFail);
     }
 
     /**
@@ -104,10 +123,11 @@ public final class PortholeConnector {
         }
     }
 
-    private static synchronized boolean start(Path exe, String code, boolean forceRelay,
-                                              int port, Consumer<String> onFail) {
+    /** @return поколение запущенной попытки либо {@link #NO_ATTEMPT}, если не взлетело. */
+    private static synchronized int start(Path exe, String code, boolean forceRelay,
+                                          int port, AtomicReference<String> error,
+                                          Consumer<String> onFail) {
         stop();
-        errorKey = null;
 
         List<String> cmd = new ArrayList<>();
         cmd.add(exe.toString());
@@ -133,23 +153,23 @@ public final class PortholeConnector {
             process = null;
             PortholeOmnis.LOGGER.error("[porthole] connect не запустился", e);
             onFail.accept("portholeomnis.porthole.launch_failed");
-            return false;
+            return NO_ATTEMPT;
         }
 
         WindowsJobObject.adopt(process);
         PortholeWatchdog.track(process);
-        shutdownHook = new Thread(PortholeConnector::destroyQuietly, "portholeomnis-connect-hook");
+        shutdownHook = new Thread(PortholeConnector::destroyBlocking, "portholeomnis-connect-hook");
         Runtime.getRuntime().addShutdownHook(shutdownHook);
 
         Process p = process;
-        Thread pump = new Thread(() -> pump(p), "portholeomnis-connect-stdout");
+        Thread pump = new Thread(() -> pump(p, error), "portholeomnis-connect-stdout");
         pump.setDaemon(true);
         pump.start();
-        return true;
+        return ++generation;
     }
 
     /** Схема connect не разобрана — всё пишем в лог, ловим только явный error. */
-    private static void pump(Process p) {
+    private static void pump(Process p, AtomicReference<String> error) {
         try (BufferedReader r = new BufferedReader(new InputStreamReader(
                 p.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
@@ -170,7 +190,7 @@ public final class PortholeConnector {
                     JsonObject o = el.getAsJsonObject();
                     if (o.has("event") && o.get("event").isJsonPrimitive()
                             && "error".equals(o.get("event").getAsString())) {
-                        errorKey = "portholeomnis.porthole.error";
+                        error.set("portholeomnis.porthole.error");
                     }
                 } catch (RuntimeException malformed) {
                     // сырой CLI: неразобранная строка не должна ронять мод
@@ -186,24 +206,31 @@ public final class PortholeConnector {
      * открывается и сразу закрывается — для Porthole это выглядит как гость,
      * который подключился и отвалился.
      */
-    private static void awaitReady(int port, IntConsumer onReady, Consumer<String> onFail) {
+    private static void awaitReady(int gen, int port, AtomicReference<String> error,
+                                   IntConsumer onReady, Consumer<String> onFail) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(READY_TIMEOUT_SECONDS);
         while (System.nanoTime() < deadline) {
-            String failed = errorKey;
+            String failed = error.get();
             if (failed != null) {
-                stop();
-                onFail.accept(failed);
+                if (stopIfCurrent(gen)) {
+                    onFail.accept(failed);
+                }
                 return;
             }
-            if (!isRunning()) {
-                stop();
-                onFail.accept("portholeomnis.connect.exited");
+            if (!aliveAndCurrent(gen)) {
+                // Либо процесс умер, либо попытку отменили. Во втором случае
+                // stopIfCurrent вернёт false и гость не увидит чужой ошибки.
+                if (stopIfCurrent(gen)) {
+                    onFail.accept("portholeomnis.connect.exited");
+                }
                 return;
             }
             try (Socket probe = new Socket()) {
                 probe.connect(new InetSocketAddress("127.0.0.1", port), 1000);
                 PortholeOmnis.LOGGER.info("[porthole] туннель принимает соединения на 127.0.0.1:{}", port);
-                onReady.accept(port);
+                if (isCurrent(gen)) {
+                    onReady.accept(port);
+                }
                 return;
             } catch (IOException notYet) {
                 // порт ещё не открыт — это норма, пока идёт согласование
@@ -215,11 +242,37 @@ public final class PortholeConnector {
                 return;
             }
         }
+        if (stopIfCurrent(gen)) {
+            onFail.accept("portholeomnis.connect.timeout");
+        }
+    }
+
+    private static synchronized boolean isCurrent(int gen) {
+        return generation == gen;
+    }
+
+    /** Поколение и живость проверяются вместе: между двумя вызовами попытку могли сменить. */
+    private static synchronized boolean aliveAndCurrent(int gen) {
+        return generation == gen && process != null && process.isAlive();
+    }
+
+    /**
+     * Сворачивает туннель, только если он всё ещё принадлежит поколению {@code gen}.
+     *
+     * @return true, если попытка была наша — тогда и о её исходе сообщать нам
+     */
+    private static synchronized boolean stopIfCurrent(int gen) {
+        if (generation != gen) {
+            return false;
+        }
         stop();
-        onFail.accept("portholeomnis.connect.timeout");
+        return true;
     }
 
     public static synchronized void stop() {
+        // Смена поколения — сигнал воркеру текущей попытки: его процесса больше нет,
+        // молчать и ничего не трогать.
+        generation++;
         if (shutdownHook != null) {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
@@ -231,16 +284,47 @@ public final class PortholeConnector {
         destroyQuietly();
     }
 
-    private static void destroyQuietly() {
+    /** Снимает процесс с учёта. Возвращает его же — или null, если снимать нечего. */
+    private static synchronized Process detach() {
         Process p = process;
         process = null;
+        if (p != null) {
+            PortholeWatchdog.untrack(p.pid());
+        }
+        return p;
+    }
+
+    /**
+     * Убивает процесс, не задерживая вызывающего: stop() приходит с клиентского потока,
+     * а три секунды ожидания на нём — это три секунды замершей игры.
+     */
+    private static void destroyQuietly() {
+        Process p = detach();
         if (p == null) {
             return;
         }
-        PortholeWatchdog.untrack(p.pid());
         p.destroy();
+        Thread reaper = new Thread(() -> awaitExit(p), "portholeomnis-connect-reaper");
+        reaper.setDaemon(true);
+        reaper.start();
+    }
+
+    /**
+     * Вариант для shutdown hook: ждать обязан сам хук. Посторонний поток JVM во время
+     * завершения не дождётся, и упрямый процесс пережил бы игру.
+     */
+    private static void destroyBlocking() {
+        Process p = detach();
+        if (p == null) {
+            return;
+        }
+        p.destroy();
+        awaitExit(p);
+    }
+
+    private static void awaitExit(Process p) {
         try {
-            if (!p.waitFor(3, TimeUnit.SECONDS)) {
+            if (!p.waitFor(DESTROY_GRACE_SECONDS, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
             }
         } catch (InterruptedException e) {

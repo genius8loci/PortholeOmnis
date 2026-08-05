@@ -4,6 +4,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.client.gui.screen.ConnectScreen;
 import net.minecraft.client.gui.screen.Screen;
@@ -31,16 +32,36 @@ public class PortholeOmnis implements ClientModInitializer {
     public static final String STORE_WEB_URL =
             "https://store.steampowered.com/app/4963920/Porthole__Local_Port_Sharing/";
 
-    /** Состояние тумблеров экрана "Открыть для сети". Живёт между открытиями экрана. */
-    public static boolean onlineMode = true;
-    public static boolean usePorthole = true;
+    /**
+     * Состояние тумблеров экрана "Открыть для сети". Живёт между открытиями экрана.
+     *
+     * <p>volatile обязателен: пишет клиентский поток (нажатие тумблера), читает серверный
+     * ({@code IntegratedServerMixin} в момент openToLan).
+     */
+    public static volatile boolean onlineMode = true;
+    public static volatile boolean usePorthole = true;
     /** По умолчанию включён: при прямом P2P хост и гость обмениваются IP. */
-    public static boolean forceRelay = true;
+    public static volatile boolean forceRelay = true;
+
+    /**
+     * То же для гостя. Отдельный флаг, а не общий с хостовым: тумблер хоста живёт на
+     * экране «Открыть для сети», куда гость не заходит, и без своего флага он всегда
+     * оставался бы на умолчании без права выбора.
+     */
+    public static volatile boolean guestForceRelay = true;
+
+    /** Полный ключ перевода из короткого идентификатора причины. */
+    public static String key(String id) {
+        return MOD_ID + "." + id;
+    }
 
     @Override
     public void onInitializeClient() {
         // Прошлый запуск мог умереть так, что shutdown hook не отработал.
         PortholeWatchdog.killLeftovers();
+
+        // Плашки о входе и выходе гостей.
+        HudRenderCallback.EVENT.register((context, tickDelta) -> PortholeToasts.render(context));
 
         // Мир закрыт — туннель обязан свернуться вместе с ним.
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> PortholeLauncher.stop());

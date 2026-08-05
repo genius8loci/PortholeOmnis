@@ -30,6 +30,8 @@ final class PortholeWatchdog {
 
     private static final String PREFIX = ".portholeomnis-processes-";
     private static final long OWNER = ProcessHandle.current().pid();
+    /** Сколько даём осиротевшему процессу на штатное завершение, прежде чем добить силой. */
+    private static final long FORCE_AFTER_MILLIS = 3_000;
 
     /** PID → момент старта в миллисекундах эпохи, 0 если ОС его не отдала. */
     private static final Map<Long, Long> tracked = new LinkedHashMap<>();
@@ -64,6 +66,7 @@ final class PortholeWatchdog {
             PortholeOmnis.LOGGER.warn("не удалось прочитать каталог игры", e);
             return;
         }
+        List<ProcessHandle> stubborn = new ArrayList<>();
         for (Path file : files) {
             long owner = ownerOf(file);
             // Наш собственный PID сюда попасть не может — файл ещё не создан, значит
@@ -71,11 +74,12 @@ final class PortholeWatchdog {
             if (owner != OWNER && owner > 0 && isAlive(owner)) {
                 continue; // файлом владеет живая копия игры, не лезем
             }
-            killAll(file);
+            killAll(file, stubborn);
         }
+        forceLater(stubborn);
     }
 
-    private static void killAll(Path file) {
+    private static void killAll(Path file, List<ProcessHandle> killed) {
         try {
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 String[] parts = line.trim().split("\\s+");
@@ -83,7 +87,10 @@ final class PortholeWatchdog {
                     continue;
                 }
                 try {
-                    kill(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
+                    ProcessHandle handle = kill(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
+                    if (handle != null) {
+                        killed.add(handle);
+                    }
                 } catch (NumberFormatException malformed) {
                     // битая строка — пропускаем, файл всё равно удаляется целиком
                 }
@@ -94,10 +101,11 @@ final class PortholeWatchdog {
         }
     }
 
-    private static void kill(long pid, long start) {
+    /** @return процесс, которому послан сигнал завершения, либо null, если убивать нечего. */
+    private static ProcessHandle kill(long pid, long start) {
         ProcessHandle handle = ProcessHandle.of(pid).orElse(null);
         if (handle == null || !handle.isAlive()) {
-            return;
+            return null;
         }
         ProcessHandle.Info info = handle.info();
 
@@ -106,15 +114,47 @@ final class PortholeWatchdog {
         // запущенный пользователем вручную уже после падения игры.
         String command = info.command().orElse("");
         if (!SteamClient.fileName(command).equalsIgnoreCase(PortholeLocator.binaryName())) {
-            return;
+            return null;
         }
         long actualStart = info.startInstant().map(Instant::toEpochMilli).orElse(0L);
         if (start != 0 && actualStart != 0 && start != actualStart) {
-            return;
+            return null;
         }
 
         PortholeOmnis.LOGGER.info("[porthole] добиваем процесс {} от прошлого запуска", pid);
         handle.destroy();
+        return handle;
+    }
+
+    /**
+     * Дожимает тех, кто не ушёл по-хорошему.
+     *
+     * <p>В фон уносится ровно это ожидание, а не весь {@link #killLeftovers}: тот зовётся
+     * с главного потока при старте игры и обязан отработать до первого {@link #track},
+     * иначе гонка удалит файл с уже живым PID (см. проверку {@code owner != OWNER}).
+     * Ждать на главном потоке тоже нельзя — игра встанет на старте.
+     */
+    private static void forceLater(List<ProcessHandle> handles) {
+        if (handles.isEmpty()) {
+            return;
+        }
+        Thread reaper = new Thread(() -> {
+            try {
+                Thread.sleep(FORCE_AFTER_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            for (ProcessHandle handle : handles) {
+                if (handle.isAlive()) {
+                    PortholeOmnis.LOGGER.info("[porthole] процесс {} не ушёл, добиваем силой",
+                            handle.pid());
+                    handle.destroyForcibly();
+                }
+            }
+        }, "portholeomnis-leftover-reaper");
+        reaper.setDaemon(true);
+        reaper.start();
     }
 
     private static boolean isAlive(long pid) {

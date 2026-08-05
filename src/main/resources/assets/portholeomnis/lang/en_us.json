@@ -1,8 +1,24 @@
 {
   "portholeomnis.online_mode": "Online Mode",
+  "portholeomnis.online_mode.tooltip.on": "Verify guests with Mojang. Only players who own the game can join, under their own accounts.",
+  "portholeomnis.online_mode.tooltip.off": "No account check. Your world is open to the internet and anyone can join under any name — including people you never gave the code to.",
   "portholeomnis.use_porthole": "Porthole",
+  "portholeomnis.use_porthole.tooltip.on": "Bring up the tunnel and post the share code to chat — friends can join over the internet.",
+  "portholeomnis.use_porthole.tooltip.off": "Plain LAN: the world stays visible on your local network only, no tunnel is started.",
   "portholeomnis.force_relay": "Relay",
   "portholeomnis.force_relay.tooltip": "Route through Valve relays. Hides your IP from guests at the cost of some latency.",
+  "portholeomnis.lobby.title": "Porthole lobby",
+  "portholeomnis.lobby.copy": "Copy share code",
+  "portholeomnis.lobby.copied": "Code copied!",
+  "portholeomnis.lobby.open": "Porthole lobby",
+  "portholeomnis.lobby.more": "%s more…",
+  "portholeomnis.lobby.mode.relay": "Transport: Valve relay",
+  "portholeomnis.lobby.mode.direct": "Transport: direct",
+  "portholeomnis.lobby.peers": "Connected: %s",
+  "portholeomnis.lobby.nobody": "Nobody yet",
+  "portholeomnis.toast.joined": "Joining the lobby",
+  "portholeomnis.toast.left": "Left the lobby",
+
   "portholeomnis.chat.code": "Porthole share code: %s",
   "portholeomnis.chat.copy": "Click to copy",
 
@@ -18,6 +34,7 @@
   "portholeomnis.connect.timeout": "The tunnel did not come up in time. Is the host still online?",
 
   "portholeomnis.porthole.not_found": "Porthole not found. Install it from Steam.",
+  "portholeomnis.porthole.unsupported_os": "Porthole has no macOS build: Steam ships it for Windows and Linux/SteamOS only.",
   "portholeomnis.porthole.store": "Open Porthole on Steam",
   "portholeomnis.porthole.steam_not_running": "Steam is not running. Porthole needs a running, signed-in Steam client.",
   "portholeomnis.porthole.launch_failed": "Failed to start Porthole.",

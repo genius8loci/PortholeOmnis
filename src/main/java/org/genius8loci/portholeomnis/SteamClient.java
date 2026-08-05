@@ -7,17 +7,31 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /** Всё, что касается самого клиента Steam: где он лежит, запущен ли, как его дёрнуть. */
 public final class SteamClient {
 
-    private static final boolean WINDOWS =
-            System.getProperty("os.name", "").toLowerCase().contains("win");
+    private static final String OS = System.getProperty("os.name", "").toLowerCase();
+    private static final boolean WINDOWS = OS.contains("win");
+    private static final boolean MACOS = OS.contains("mac");
     private static final String PROCESS = WINDOWS ? "steam.exe" : "steam";
 
     /** Сколько ждём появления процесса Steam, прежде чем всё равно открыть ссылку. */
     private static final long LAUNCH_WAIT_MILLIS = 8_000;
     private static final long POLL_MILLIS = 250;
+
+    /**
+     * Время жизни кэша проверки. Перечисление процессов на Windows — это OpenProcess
+     * и QueryFullProcessImageName на каждый процесс системы, сотни вызовов ядра;
+     * с клиентского потока это заметный подлаг.
+     */
+    private static final long CACHE_NANOS = TimeUnit.SECONDS.toNanos(5);
+
+    private record Probe(boolean running, long at) {
+    }
+
+    private static volatile Probe cache;
 
     private SteamClient() {
     }
@@ -25,12 +39,32 @@ public final class SteamClient {
     /**
      * Запущен ли клиент Steam. Porthole без него не работает.
      *
+     * <p>Ответ кэшируется на {@link #CACHE_NANOS}: метод зовут при открытии экрана и
+     * каждую секунду из его тика, а сама проверка дорогая. Кому нужен свежий ответ —
+     * {@link #refresh()}.
+     */
+    public static boolean isRunning() {
+        Probe c = cache;
+        if (c != null && System.nanoTime() - c.at() < CACHE_NANOS) {
+            return c.running();
+        }
+        return refresh();
+    }
+
+    /** Проверка мимо кэша: для опроса в цикле, где протухший ответ и есть та самая беда. */
+    public static boolean refresh() {
+        boolean running = scan();
+        cache = new Probe(running, System.nanoTime());
+        return running;
+    }
+
+    /**
      * <p>Проверка намеренно «мягкая»: если перечислить процессы не удалось или ни у
      * одного процесса нет имени команды (урезанные права, песочница), считаем, что
      * Steam запущен. Ложный запрет хуже пропущенной проверки — с ним пользователь
      * с рабочей установкой не сможет запустить туннель вообще.
      */
-    public static boolean isRunning() {
+    private static boolean scan() {
         int named = 0;
         try {
             for (ProcessHandle h : ProcessHandle.allProcesses().toList()) {
@@ -61,7 +95,8 @@ public final class SteamClient {
     }
 
     private static void doOpenStorePage() {
-        if (!isRunning()) {
+        // Мимо кэша: поток фоновый, а поднимать Steam второй раз ни к чему.
+        if (!refresh()) {
             launchAndWait();
         }
         openUri(PortholeOmnis.STORE_STEAM_URI);
@@ -84,7 +119,8 @@ public final class SteamClient {
         }
         long deadline = System.currentTimeMillis() + LAUNCH_WAIT_MILLIS;
         while (System.currentTimeMillis() < deadline) {
-            if (isRunning()) {
+            // Именно refresh: с кэшем цикл первые пять секунд читал бы протухшее «нет».
+            if (refresh()) {
                 return;
             }
             try {
@@ -107,9 +143,15 @@ public final class SteamClient {
      * На Windows зовём тот же обработчик, что и диалог «Выполнить».
      */
     private static void openUri(String uri) {
-        List<String> cmd = WINDOWS
-                ? List.of("rundll32", "url.dll,FileProtocolHandler", uri)
-                : List.of("xdg-open", uri);
+        List<String> cmd;
+        if (WINDOWS) {
+            cmd = List.of("rundll32", "url.dll,FileProtocolHandler", uri);
+        } else if (MACOS) {
+            // xdg-open на macOS нет; штатный открывальщик схем — open(1).
+            cmd = List.of("open", uri);
+        } else {
+            cmd = List.of("xdg-open", uri);
+        }
         try {
             PortholeOmnis.LOGGER.info("[steam] открываем {}", uri);
             new ProcessBuilder(cmd).start();

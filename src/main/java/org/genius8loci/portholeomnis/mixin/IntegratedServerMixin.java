@@ -50,9 +50,12 @@ public abstract class IntegratedServerMixin {
                 key -> chat(problem(stripArg(key))));
     }
 
-    /** К сообщению «Porthole не найден» цепляем ссылку на магазин. */
+    /**
+     * К сообщению «Porthole не найден» цепляем ссылку на магазин. К «нет сборки под
+     * вашу ОС» — нарочно нет: покупать там нечего.
+     */
     private static Text problem(String id) {
-        MutableText text = Text.translatable("portholeomnis." + id).formatted(Formatting.RED);
+        MutableText text = Text.translatable(PortholeOmnis.key(id)).formatted(Formatting.RED);
         if ("porthole.not_found".equals(id)) {
             text.append(ScreenTexts.SPACE).append(storeLink());
         }
