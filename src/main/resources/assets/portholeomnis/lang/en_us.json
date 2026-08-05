@@ -1,0 +1,25 @@
+{
+  "portholeomnis.online_mode": "Online Mode",
+  "portholeomnis.use_porthole": "Porthole",
+  "portholeomnis.force_relay": "Relay",
+  "portholeomnis.force_relay.tooltip": "Route through Valve relays. Hides your IP from guests at the cost of some latency.",
+  "portholeomnis.chat.code": "Porthole share code: %s",
+  "portholeomnis.chat.copy": "Click to copy",
+
+  "portholeomnis.connect.button": "Porthole",
+  "portholeomnis.connect.title": "Join via Porthole",
+  "portholeomnis.connect.code": "Share code",
+  "portholeomnis.connect.join": "Connect",
+  "portholeomnis.connect.server_name": "Porthole",
+  "portholeomnis.connect.status.starting": "Starting Porthole…",
+  "portholeomnis.connect.status.waiting": "Waiting for the tunnel…",
+  "portholeomnis.connect.no_port": "No free local port available.",
+  "portholeomnis.connect.exited": "Porthole exited. Check the code and try again.",
+  "portholeomnis.connect.timeout": "The tunnel did not come up in time. Is the host still online?",
+
+  "portholeomnis.porthole.not_found": "Porthole not found. Install it from Steam.",
+  "portholeomnis.porthole.store": "Open Porthole on Steam",
+  "portholeomnis.porthole.steam_not_running": "Steam is not running. Porthole needs a running, signed-in Steam client.",
+  "portholeomnis.porthole.launch_failed": "Failed to start Porthole.",
+  "portholeomnis.porthole.error": "Porthole error."
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "portholeomnis",
+  "version": "${version}",
+  "name": "PortholeOmnis",
+  "description": "Open your world to the internet through Porthole: one click on the host, one share code on the guest.",
+  "authors": ["genius8loci"],
+  "contact": {
+    "homepage": "https://github.com/genius8loci/PortholeOmnis",
+    "sources": "https://github.com/genius8loci/PortholeOmnis",
+    "issues": "https://github.com/genius8loci/PortholeOmnis/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/portholeomnis/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["org.genius8loci.portholeomnis.PortholeOmnis"]
+  },
+  "mixins": ["portholeomnis.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "portholeomnis.online_mode": "Онлайн-режим",
+  "portholeomnis.use_porthole": "Porthole",
+  "portholeomnis.force_relay": "Релей",
+  "portholeomnis.force_relay.tooltip": "Пускать трафик через релеи Valve. Скрывает ваш IP от гостей ценой небольшой задержки.",
+  "portholeomnis.chat.code": "Код лобби Porthole: %s",
+  "portholeomnis.chat.copy": "Нажмите, чтобы скопировать",
+
+  "portholeomnis.connect.button": "Porthole",
+  "portholeomnis.connect.title": "Подключение через Porthole",
+  "portholeomnis.connect.code": "Код лобби",
+  "portholeomnis.connect.join": "Подключиться",
+  "portholeomnis.connect.server_name": "Porthole",
+  "portholeomnis.connect.status.starting": "Запускаем Porthole…",
+  "portholeomnis.connect.status.waiting": "Ждём туннель…",
+  "portholeomnis.connect.no_port": "Не нашлось свободного локального порта.",
+  "portholeomnis.connect.exited": "Porthole завершился. Проверьте код и попробуйте снова.",
+  "portholeomnis.connect.timeout": "Туннель не поднялся вовремя. Хост ещё в сети?",
+
+  "portholeomnis.porthole.not_found": "Porthole не найден. Установите его в Steam.",
+  "portholeomnis.porthole.store": "Открыть Porthole в Steam",
+  "portholeomnis.porthole.steam_not_running": "Steam не запущен. Porthole требует запущенного клиента Steam с выполненным входом.",
+  "portholeomnis.porthole.launch_failed": "Не удалось запустить Porthole.",
+  "portholeomnis.porthole.error": "Ошибка Porthole."
+}

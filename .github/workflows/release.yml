@@ -1,0 +1,32 @@
+name: release
+
+# Тег вида v1.0.0 собирает мод и вешает jar на релиз GitHub.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # См. build.yml: gradlew приезжает из Windows-репозитория без бита исполнения.
+      - run: bash ./gradlew build
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          # Маска забирает и мод, и sources-jar — оба лежат в build/libs.
+          files: build/libs/portholeomnis-*.jar
