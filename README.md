@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/main/resources/assets/portholeomnis/icon.png" width="128" alt="PortholeOmnis">
+<img src="src/main/resources/assets/portholeomnis/icon.png" width="152" alt="PortholeOmnis">
 
 # PortholeOmnis
 
